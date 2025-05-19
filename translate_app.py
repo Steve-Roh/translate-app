@@ -1,14 +1,13 @@
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
-import easyocr
+import pytesseract
 from googletrans import Translator
 import numpy as np
 import io
 import zipfile
 import os
 
-# OCR 및 번역기 초기화
-reader = easyocr.Reader(['ch_sim', 'en'])  # 중국어 간체 + 영어
+# 번역기 초기화
 translator = Translator()
 
 # 앱 제목
@@ -17,8 +16,8 @@ st.write("이미지를 업로드하면 중국어를 한국어로 번역해서 �
 
 # 이미지 업로드 (최대 20장)
 uploaded_files = st.file_uploader(
-    "📤 이미지 업로드 (최대 20장)", 
-    type=["png", "jpg", "jpeg"], 
+    "📤 이미지 업로드 (최대 20장)",
+    type=["png", "jpg", "jpeg"],
     accept_multiple_files=True
 )
 
@@ -32,7 +31,6 @@ if uploaded_files and st.button("🔄 번역 시작하기"):
 
     with zipfile.ZipFile(zip_buffer, "w") as zip_file:
         for uploaded_file in uploaded_files:
-            # 이미지 열고 NumPy로 변환
             image = Image.open(uploaded_file).convert("RGB")
             image_np = np.array(image)
             draw = ImageDraw.Draw(image)
@@ -42,17 +40,23 @@ if uploaded_files and st.button("🔄 번역 시작하기"):
             except:
                 font = ImageFont.load_default()
 
-            # OCR로 텍스트 추출
-            results = reader.readtext(image_np)
+            # pytesseract OCR (중국어 간체 + 영어)
+            raw_text = pytesseract.image_to_data(image, lang='chi_sim+eng', output_type=pytesseract.Output.DICT)
 
-            for (bbox, text, prob) in results:
-                try:
-                    translated = translator.translate(text, src='zh-cn', dest='ko').text
-                except:
-                    translated = "[번역 실패]"
-
-                top_left = bbox[0]
-                draw.text(top_left, translated, font=font, fill=(255, 0, 0))
+            for i in range(len(raw_text['text'])):
+                word = raw_text['text'][i]
+                if word.strip() != "":
+                    try:
+                        translated = translator.translate(word, src='zh-cn', dest='ko').text
+                    except:
+                        translated = "[번역 실패]"
+                    (x, y, w, h) = (
+                        raw_text['left'][i],
+                        raw_text['top'][i],
+                        raw_text['width'][i],
+                        raw_text['height'][i]
+                    )
+                    draw.text((x, y), translated, font=font, fill=(255, 0, 0))
 
             # 이미지 저장
             img_bytes = io.BytesIO()
